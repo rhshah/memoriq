@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memoriq - Flashcards & Quiz</title>
+
+    <!-- KaTeX for Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <!-- PapaParse for Reliable CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --gray: #94a3b8;
+            --light-gray: #f1f5f9;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem 1rem 0 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 650px;
+            width: 100%;
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            position: relative;
+        }
+
+        h1 { text-align: center; color: var(--primary); margin-top: 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+
+        .header-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+            gap: 0.5rem;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 0.5rem;
+            padding: 4rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 1rem 0;
+            background: #fcfcfd;
+        }
+        .upload-area:hover { border-color: var(--primary); background: #f0fdf4; }
+        .hidden { display: none !important; }
+
+        /* Help Section */
+        .help-section {
+            background: var(--light-gray);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            font-size: 0.95rem;
+            border-left: 4px solid var(--primary);
+        }
+        .help-section h4 { margin-top: 0; color: var(--primary); display: flex; align-items: center; gap: 0.5rem; }
+        .help-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            background: white;
+            border-radius: 0.25rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .help-table th, .help-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .help-table th { background: var(--primary); color: white; }
+        .help-table tr:last-child td { border-bottom: none; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 1rem; margin-bottom: 2rem; justify-content: center; }
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: #e2e8f0;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .tab-btn.active { background: var(--primary); color: white; box-shadow: 0 4px 6px -1px rgb(37 99 235 / 0.4); }
+
+        /* Progress Bar */
+        .progress-wrapper {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Flashcards */
+        .flashcard-container {
+            perspective: 1000px;
+            min-height: 300px;
+            margin-bottom: 1.5rem;
+            cursor: pointer;
+            width: 100%;
+            transition: height 0.3s ease;
+        }
+        .flashcard {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.5s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .flashcard.flipped { transform: rotateX(180deg); }
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 2.5rem;
+            box-sizing: border-box;
+            border-radius: 1rem;
+            background: white;
+            border: 2px solid #e2e8f0;
+            font-size: 1.15rem;
+            line-height: 1.6;
+            text-align: left;
+            white-space: pre-wrap; 
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+        }
+        .card-back {
+            transform: rotateX(180deg);
+            border-color: var(--primary);
+            background: #f8fafc;
+        }
+
+        .flip-icon {
+            position: absolute;
+            bottom: 1rem;
+            right: 1.5rem;
+            color: var(--gray);
+            font-size: 1.25rem;
+            opacity: 0.5;
+        }
+
+        .navigation-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .btn {
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        
+        .btn-primary { background: var(--primary); }
+        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+        .btn-outline:hover { background: var(--primary); color: white; }
+
+        /* Quiz Section */
+        .quiz-question { font-size: 1.15rem; font-weight: 600; margin-bottom: 1.5rem; white-space: pre-wrap; }
+        .options-grid { display: flex; flex-direction: column; gap: 0.75rem; }
+        .option-btn {
+            padding: 1rem;
+            text-align: left;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            white-space: pre-wrap;
+        }
+        .option-btn:hover:not(:disabled) { border-color: var(--primary); background: #f8fafc; }
+        .option-btn.correct { background: #dcfce7; border-color: var(--success); color: #166534; font-weight: 600; }
+        .option-btn.wrong { background: #fee2e2; border-color: var(--error); color: #991b1b; }
+        .icon-correct { display: none; color: var(--success); }
+        .icon-wrong { display: none; color: var(--error); }
+        .option-btn.correct .icon-correct { display: block; }
+        .option-btn.wrong .icon-wrong { display: block; }
+        
+        .score-display { text-align: center; font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; color: var(--primary); }
+        
+        /* Footer */
+        footer {
+            margin-top: auto;
+            padding: 2rem 1rem 1rem 1rem;
+            text-align: center;
+            color: var(--gray);
+            font-size: 0.85rem;
+            width: 100%;
+        }
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-actions" id="header-actions">
+        <button class="btn btn-outline" onclick="resetApp()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+            <i class="fas fa-file-upload"></i> Load Custom Deck
+        </button>
+    </div>
+
+    <h1><i class="fas fa-brain"></i> Memoriq</h1>
+
+    <!-- Upload View -->
+    <div id="upload-view" class="hidden">
+        <div class="upload-area" onclick="document.getElementById('csv-file').click()">
+            <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: var(--gray); margin-bottom: 1rem;"></i>
+            <h3 style="margin: 0 0 0.5rem 0;">Upload your CSV File</h3>
+            <p style="margin: 0; color: #64748b;">Must contain two columns: Question and Answer</p>
+            <input type="file" id="csv-file" accept=".csv" class="hidden" onchange="handleFileUpload(event)">
+        </div>
+        <div style="text-align: center; margin-top: 1rem;">
+            <button class="btn btn-outline" onclick="loadDefaultDeck()" style="margin: 0 auto;">Restore Default Deck</button>
+        </div>
+
+        <!-- Help Section for CSV Format -->
+        <div class="help-section">
+            <h4><i class="fas fa-info-circle"></i> CSV Formatting Guide</h4>
+            <p style="margin-top: 0;">To create your own deck, use a program like Excel or Google Sheets and save as a <strong>.csv (Comma Separated Values)</strong> file. It must have exactly two columns.</p>
+            
+            <table class="help-table">
+                <thead>
+                    <tr>
+                        <th>Column 1 (Front of Card)</th>
+                        <th>Column 2 (Back of Card)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>What is the capital of France?</td>
+                        <td>Paris</td>
+                    </tr>
+                    <tr>
+                        <td>Formula for Sharpe Ratio</td>
+                        <td>$S_p = rac{E(r_p) - r_f}{\sigma_p}$</td>
+                    </tr>
+                    <tr>
+                        <td>Term: Idiosyncratic Risk</td>
+                        <td>Risk that affects only a specific firm.</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <ul style="margin-bottom: 0; padding-left: 1.2rem; margin-top: 1rem;">
+                <li><strong>Math Support:</strong> Wrap math equations in <code>$ ... $</code> for inline math or <code>$$...$$</code> for centered equations (Uses standard LaTeX syntax).</li>
+                <li><strong>Commas/Newlines:</strong> If your text has commas or line breaks, Excel/Sheets will automatically quote them for you, and this app will read them perfectly.</li>
+                <li><strong>No Headers Needed:</strong> The app assumes the first row contains your first question.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- App View -->
+    <div id="app-view">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('flashcards')" id="tab-flashcards"><i class="fas fa-book-open"></i> Study Mode</button>
+            <button class="tab-btn" onclick="switchTab('quiz')" id="tab-quiz"><i class="fas fa-check-double"></i> Knowledge Check</button>
+        </div>
+
+        <!-- Flashcards Section -->
+        <div id="flashcards-section">
+            <div class="progress-wrapper">
+                <div class="progress-fill" id="study-progress"></div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.95rem; color: var(--gray); font-weight: 600;">
+                <span id="card-counter-text">Card 1 of X</span>
+                <span id="cards-remaining-text">Remaining: X</span>
+            </div>
+            
+            <div class="flashcard-container" onclick="flipCard()">
+                <div class="flashcard" id="flashcard">
+                    <div class="card-face card-front">
+                        <div id="card-front-content"></div>
+                        <i class="fas fa-sync-alt flip-icon"></i>
+                    </div>
+                    <div class="card-face card-back">
+                        <div id="card-back-content"></div>
+                        <i class="fas fa-sync-alt flip-icon"></i>
+                    </div>
+                </div>
+            </div>
+
+            <p id="instruction-text" style="text-align: center; color: var(--gray); margin: 0.5rem 0 0 0; font-size: 0.95rem;">Click card or press <strong>Space</strong> to flip</p>
+
+            <div class="navigation-controls">
+                <button class="btn btn-primary" id="btn-prev" onclick="prevCard()">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+                <button class="btn btn-primary" id="btn-next" onclick="nextCard()">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Quiz Section -->
+        <div id="quiz-section" class="hidden">
+            <div class="score-display" id="score-display">Score: 0 / 0</div>
+            <div class="quiz-question" id="quiz-question"></div>
+            <div class="options-grid" id="quiz-options"></div>
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <button class="btn btn-primary hidden" id="next-quiz-btn" onclick="loadNewQuiz()" style="margin: 0 auto;">Next Question <i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <p>&copy; 2026 Memoriq. Made by <a href="https://github.com/rhshah" target="_blank">Ronak Shah (@rhshah)</a> using Gemini. All rights reserved.</p>
+</footer>
+
+<script>
+    // Embedded Default Flashcards Data
+    const defaultFlashcardsData = [{"q": "What is the primary determinant of a portfolio's total return and volatility over the long term?", "a": "Asset allocation."}, {"q": "In the investment process, what is the first step before choosing specific securities?", "a": "Deciding how much money to allocate to risky versus non-risky assets."}, {"q": "According to the risk-return tradeoff, what must happen to risk for potential return to rise?", "a": "Risk must increase."}, {"q": "Term: Idiosyncratic Risk", "a": "Definition: Risk factors affecting only a specific firm that can be eliminated through diversification."}, {"q": "What is another term for 'Market Risk' that affects the overall economy and cannot be diversified away?", "a": "Systematic Risk."}, {"q": "What is the name of the theory developed by Harry Markowitz in 1952 that quantifies the impact of correlations on portfolio risk?", "a": "Modern Portfolio Theory (MPT)."}, {"q": "In MPT, how is investment risk mathematically measured?", "a": "Standard deviation (volatility) of returns."}, {"q": "According to MPT, why should an investor care about how securities move together rather than individual security risk?", "a": "Interactions (correlations) allow for the creation of portfolios with better risk-return tradeoffs."}, {"q": "What does a correlation coefficient of $+1.0$ between two assets imply for diversification?", "a": "There is no diversification benefit at all."}, {"q": "What is the correlation coefficient value for a 'perfect hedge' where risk can theoretically be eliminated?", "a": "$-1.0$."}, {"q": "The _____ identifies the weights of assets that maximize return for a given level of risk or minimize risk for a target return.", "a": "Portfolio Optimizer (Mean-Variance Optimizer)."}, {"q": "What is the statistical rule for a Normal Distribution regarding data within one standard deviation of the mean?", "a": "The $68-95-99.7$ rule states that $68\\%$ of data falls within one standard deviation."}, {"q": "Formula: Sharpe Ratio", "a": "$S_p = \\frac{E(r_p) - r_f}{\\sigma_p}$"}, {"q": "What does the 'Numerator' ($E(r_p) - r_f$) represent in the Sharpe Ratio formula?", "a": "Excess return over the risk-free rate (Risk Premium)."}, {"q": "Concept: The Capital Market Line (CML)", "a": "Definition: The line representing the tradeoff between risk and return for efficient portfolios of a risk-free asset and the market portfolio."}, {"q": "What is the 'Market Portfolio' in the context of passive investing theory?", "a": "A theoretical, perfectly diversified portfolio representing all investable assets in the economy."}, {"q": "According to Bill Sharpe's 'Arithmetic of Active Management', why must the average active manager underperform the average passive manager after fees?", "a": "Both groups in aggregate hold the market, but active management incurs higher transaction and management costs."}, {"q": "What is a 'Price-Weighted' index?", "a": "An index where the weight of each constituent is determined solely by its share price (e.g., DJIA)."}, {"q": "What is a 'Market-Cap Weighted' index?", "a": "An index where the weight of each constituent is proportional to its total market value (Price $\\times$ Shares Outstanding)."}, {"q": "In an 'Equal-Weighted' index, what happens to the relative influence of smaller companies compared to a market-cap weighted index?", "a": "Smaller companies have a much larger influence (weight) in the portfolio."}, {"q": "What is the main criticism of Market-Cap Weighted indices?", "a": "They tend to overweight overvalued stocks and are heavily concentrated in a few mega-cap companies."}, {"q": "Term: Dividend-Weighted Strategy", "a": "Definition: A methodology that weights companies based on the actual cash dividends paid rather than market price."}, {"q": "Why does an Equal-Weighted S&P 500 index often exhibit a 'Value Bias'?", "a": "It systematically overweights smaller-cap and lower-valuation stocks relative to the standard S&P 500."}, {"q": "Which index is a price-weighted indicator of 30 large U.S. industrial companies?", "a": "The Dow Jones Industrial Average (DJIA)."}, {"q": "What is the purpose of the 'GICS' (Global Industry Classification Standard)?", "a": "To provide a consistent framework for classifying companies into sectors and industries for performance comparison."}, {"q": "List the three original factors in the Fama-French Three-Factor Model.", "a": "Market risk, Size (Small minus Big), and Value (High book-to-market minus Low)."}, {"q": "What does 'Alpha' ($\\\\alpha$) represent in performance attribution?", "a": "The excess return generated by a manager's skill above the expected return given the portfolio's risk level."}, {"q": "Formula: Jensen's Alpha", "a": "$\\alpha = R_p - [R_f + \\beta(R_m - R_f)]$"}, {"q": "Concept: R-Squared", "a": "Definition: A statistical measure ($0$ to $100\\%$) representing the percentage of a fund's movements that can be explained by movements in a benchmark index."}, {"q": "Why is an actively managed fund with a 'high R-Squared' ($>95\\%$) criticized by analysts?", "a": "It is considered a 'closet indexer' that charges active fees for passive market exposure."}, {"q": "Formula: Treynor Ratio", "a": "$T = \\frac{R_p - R_f}{\\beta_p}$"}, {"q": "How does the Treynor Ratio differ from the Sharpe Ratio regarding the measurement of risk?", "a": "The Treynor Ratio uses Beta (systematic risk) as the denominator, while the Sharpe Ratio uses Standard Deviation (total risk)."}, {"q": "Term: Information Ratio (IR)", "a": "Definition: A metric that measures a manager's consistency in generating excess returns relative to a benchmark's tracking error."}, {"q": "Formula: Information Ratio", "a": "$IR = \\frac{R_p - R_b}{\\text{Tracking Error}}$"}, {"q": "In the context of the Information Ratio, what is 'Tracking Error'?", "a": "The standard deviation of the difference between the portfolio return and the benchmark return."}, {"q": "What does a 'Max Drawdown' measure?", "a": "The peak-to-trough decline of an investment over a specific period, expressed as a percentage."}, {"q": "Why is 'Drawdown' often considered a more painful risk metric for investors than standard deviation?", "a": "It quantifies the actual loss of capital that must be recovered before new gains are realized."}, {"q": "Term: Sortino Ratio", "a": "Definition: A variation of the Sharpe Ratio that only penalizes 'downside' volatility rather than total volatility."}, {"q": "What are 'Cyclical Sectors'?", "a": "Sectors that perform well during economic expansions but struggle during downturns (e.g., Consumer Discretionary, Financials)."}, {"q": "What are 'Defensive Sectors'?", "a": "Sectors that remain stable and provide consistent returns even during economic recessions (e.g., Healthcare, Utilities, Consumer Staples)."}, {"q": "Concept: Factor Investing (Smart Beta)", "a": "Definition: A rules-based strategy that tilts a portfolio toward specific drivers of return like Value, Momentum, Quality, or Low Volatility."}, {"q": "What does 'Value Investing' prioritize when selecting stocks?", "a": "Buying companies that are cheap relative to their intrinsic value (low P/E, low Price-to-Book)."}, {"q": "What does 'Growth Investing' prioritize when selecting stocks?", "a": "Buying companies expected to grow sales and earnings at a faster rate than the market, often at higher valuations."}, {"q": "In index methodology, what is 'Float Adjustment'?", "a": "Adjusting the market capitalization of a company to exclude shares held by insiders or governments that are not available for public trading."}, {"q": "What is 'Index Reconstitution'?", "a": "The periodic process of re-applying index rules to add or remove constituents to ensure the index still represents its target market."}, {"q": "Why do index-based funds have lower 'Turnover' costs compared to active funds?", "a": "They only trade when the underlying index changes, avoiding the frequent buying and selling typical of active security selection."}, {"q": "In the 'Core and Satellite' portfolio approach, what does the 'Core' typically consist of?", "a": "Broad, low-cost passive index funds representing major asset classes."}, {"q": "In the 'Core and Satellite' approach, what is the purpose of the 'Satellite' portion?", "a": "To seek Alpha or specific exposure through active bets, sectors, or factors."}, {"q": "How does 'Value at Risk' (VaR) help institutional investors?", "a": "It estimates the maximum potential loss over a specific time period with a given confidence level (e.g., $95\\%$)."}, {"q": "What is the 'Arithmetic of Active Management's' view on investing as a game?", "a": "Investing is a zero-sum game before costs; after costs, it becomes a negative-sum game for the average participant."}, {"q": "Why is 'Forward Guidance' considered more important than historical earnings 'Beats' for stock prices?", "a": "Stock prices are forward-looking and reflect expectations of future performance rather than past results."}, {"q": "Which asset class is historically considered a hedge against inflation or 'tail-risk' during economic stress?", "a": "Commodities (e.g., Gold) or Real Estate."}, {"q": "In a market-cap weighted index, which stocks dominate the performance?", "a": "The largest companies with the highest market values (e.g., the 'Magnificent Seven')."}, {"q": "Cloze: A portfolio's return is a _____ combination of the returns of the individual investments.", "a": "Linear."}, {"q": "Cloze: A portfolio's variance is _____ a linear combination of component variances.", "a": "Not."}, {"q": "What is the primary objective of portfolio optimization?", "a": "To find asset weights that maximize the risk-adjusted return (Sharpe Ratio)."}, {"q": "What is the difference between an 'Indicator' and a 'Benchmark'?", "a": "An indicator provides a market signal (e.g., DJIA), while a benchmark is a comprehensive standard for evaluating performance (e.g., Russell 3000)."}, {"q": "Why is 'Rebalancing' necessary for a strategic asset allocation?", "a": "Market movements cause asset weights to drift from the target allocation, altering the portfolio's risk profile."}, {"q": "How does 'Survivorship Bias' affect the perceived performance of active mutual funds?", "a": "It makes performance look better because failed funds that closed or merged are removed from the historical data."}, {"q": "What does a 'Beta' ($\\\\beta$) of $1.5$ indicate about a portfolio?", "a": "The portfolio is $50\\%$ more volatile than the market (aggressive)."}, {"q": "Term: Covariance", "a": "Definition: A measure of the degree to which two assets move together."}, {"q": "What does 'Standard Deviation' tell an investor about a fund's returns?", "a": "The degree of scatter or variation of returns around the mean (average)."}, {"q": "Why is diversification within an asset class (e.g., owning 50 stocks vs 1) important?", "a": "It reduces idiosyncratic/unique risk, leaving only market risk."}, {"q": "Which index represents the 'Total Market' and contains approximately 3,000 U.S. stocks?", "a": "The Russell 3000."}, {"q": "According to the '70/30 Rule', what is the recommended allocation for 'growth' focused millionaires?", "a": "70\\% Stocks and 30\\% Bonds/Cash."}, {"q": "Concept: The Efficient Frontier", "a": "Definition: The set of optimal portfolios that offer the highest expected return for a defined level of risk."}, {"q": "What is the denominator in the formula for 'Information Ratio'?", "a": "Tracking Error."}, {"q": "If a manager has a negative Jensen's Alpha, what does this suggest about their performance?", "a": "They underperformed the market on a risk-adjusted basis (lost value relative to the risk taken)."}, {"q": "Why do 'Fundamental Indexing' strategies use metrics like sales or cash flow instead of price?", "a": "To avoid the 'valuation trap' of market-cap weighting, which overweights stocks as they become more expensive."}, {"q": "In the SPIVA reports, what is the typical finding regarding active fund performance over long horizons (10+ years)?", "a": "The vast majority ($>80\\%$) of active managers underperform their benchmarks."}, {"q": "What happens to the correlation between asset classes during a global financial crisis?", "a": "Correlations tend to 'converge to one,' meaning all risky assets fall together, reducing diversification benefits."}, {"q": "Which index committee chooses 500 leading companies to capture the large-cap segment of the U.S. market?", "a": "S&P Dow Jones Indices (for the S&P 500)."}, {"q": "Term: Momentum Factor", "a": "Definition: The tendency for stocks that have performed well in the recent past to continue performing well in the near future."}, {"q": "Formula: Portfolio Return ($E(r_p)$)", "a": "$E(r_p) = \\sum w_i E(r_i)$ (Weighted average of individual returns)."}, {"q": "Why is the S&P 500 often called a 'large-cap' index even though it has 500 companies?", "a": "The companies are selected based on high market capitalization, representing approximately $80\\%$ of available U.S. market value."}, {"q": "What is the 'Risk-Free Rate' typically proxied by in U.S. finance?", "a": "The yield on short-term U.S. Treasury bills (e.g., 1-month or 3-month T-bills)."}, {"q": "What is 'Systematic Risk' also known as in the context of CAPM?", "a": "Beta risk or Non-diversifiable risk."}, {"q": "In an equal-weighted index, why is there higher 'turnover' during rebalancing?", "a": "The manager must sell the 'winners' (which grew in weight) and buy the 'losers' to return all stocks to equal weights."}, {"q": "Which ratio measures consistency: Sharpe Ratio or Information Ratio?", "a": "Information Ratio (by using tracking error as the risk measure)."}, {"q": "A portfolio with an $R^2$ of $15\\%$ suggests what about its relationship to the benchmark?", "a": "Only $15\\%$ of its returns are explained by the benchmark; it is highly active or idiosyncratic."}, {"q": "Cloze: In MPT, the 'Magic Number' that eliminates risk via a perfect hedge is _____.", "a": "$-1.0$."}, {"q": "What is the 'Small-Cap Premium'?", "a": "The historical tendency for small-cap stocks to outperform large-cap stocks over long periods, though with higher volatility."}, {"q": "Which index is considered 'count-based' and has specific 'buffers' to minimize turnover?", "a": "The Russell 2000."}, {"q": "Why is 'Relative Risk' important for evaluating a fund manager?", "a": "It judges performance against a relevant peer group or benchmark rather than in isolation."}, {"q": "Term: Tracking Error", "a": "Definition: The standard deviation of the 'Active Return' (Portfolio Return minus Benchmark Return)."}, {"q": "What determines a stock's weight in the S&P 500 index?", "a": "Its float-adjusted market capitalization."}, {"q": "According to the SPIVA report, do active managers tend to perform better in 'Down Markets'?", "a": "Historically, there is little evidence that active managers as a group protect better in down markets compared to benchmarks."}, {"q": "What is 'Tactical Asset Allocation'?", "a": "Short-term deviations from the strategic asset allocation to take advantage of market opportunities."}, {"q": "Formula: Market Premium", "a": "$E(R_m) - R_f$"}, {"q": "Which statistic measures how two variables move together: Covariance or Variance?", "a": "Covariance."}, {"q": "What is 'Liability Matching' in pension fund management?", "a": "Structuring a portfolio's cash flows (from coupons/dividends) to match the timing of future payout obligations to retirees."}, {"q": "True or False: A high R-Squared portfolio will generally have higher returns than the benchmark.", "a": "False (R-Squared measures correlation, not the level of returns)."}, {"q": "In the 'Arithmetic of Active Management', if one active manager outperforms by $2\\%$, what must happen elsewhere?", "a": "Another active manager (or group) must underperform by $2\\%$ relative to the market."}, {"q": "What does 'Style' refer to in the 'Morningstar Style Box'?", "a": "The categorization of a fund based on Size (Large/Mid/Small) and Valuation (Value/Blend/Growth)."}, {"q": "Why is 'Transparency' a key characteristic of a good investable index?", "a": "It allows investors to see exactly how the index is built and what securities it contains without 'hanky-panky'."}, {"q": "What is the 'risk' measured by the Sortino Ratio?", "a": "Downside deviation (returns below a minimum acceptable return or zero)."}, {"q": "Concept: M-Squared ($M^2$)", "a": "Definition: A measure of risk-adjusted performance that translates the Sharpe Ratio into percentage return units relative to a benchmark."}, {"q": "Which index weighting methodology is essentially 'Anti-Momentum'?", "a": "Equal-Weighting (because it sells winners and buys losers every quarter)."}, {"q": "What is the main advantage of an ETF over a traditional Mutual Fund?", "a": "ETFs trade all day on an exchange, often have lower fees, and are generally more tax-efficient."}, {"q": "In a 60/40 portfolio, what is the typical role of the $40\\%$ Fixed Income portion?", "a": "To provide income and act as a diversifier to reduce overall portfolio volatility during equity market stress."}, {"q": "Why do factor models improve 'Explanatory Power' over the basic CAPM?", "a": "They account for multiple sources of systematic risk (like size and value) that the single market factor misses."}];
+
+    let flashcards = [];
+    let currentIndex = 0;
+    
+    // Quiz State
+    let quizScore = 0;
+    let quizTotal = 0;
+    let currentCorrectAnswer = "";
+    let isFlipped = false;
+
+    // --- Dynamic Height Adjuster ---
+    function adjustCardHeight() {
+        const front = document.querySelector('.card-front');
+        const back = document.querySelector('.card-back');
+        const container = document.querySelector('.flashcard-container');
+        
+        front.style.height = 'auto';
+        back.style.height = 'auto';
+        
+        const targetHeight = Math.max(front.scrollHeight, back.scrollHeight, 300);
+        
+        container.style.height = targetHeight + 'px';
+        front.style.height = '100%';
+        back.style.height = '100%';
+    }
+
+    // --- Math Rendering ---
+    function renderMathSafe() {
+        if (window.renderMathInElement) {
+            renderMathInElement(document.getElementById('app-view'), {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false
+            });
+            setTimeout(adjustCardHeight, 20); 
+        } else {
+            adjustCardHeight();
+        }
+    }
+
+    function initAppWithData(data) {
+        flashcards = [...data];
+        document.getElementById('upload-view').classList.add('hidden');
+        document.getElementById('app-view').classList.remove('hidden');
+        document.getElementById('header-actions').classList.remove('hidden');
+        quizScore = 0;
+        quizTotal = 0;
+        restartStudy();
+        loadNewQuiz();
+    }
+
+    function loadDefaultDeck() {
+        initAppWithData(defaultFlashcardsData);
+    }
+
+    // --- File Upload ---
+    function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        Papa.parse(file, {
+            complete: function(results) {
+                const newFlashcards = results.data
+                    .filter(row => row.length >= 2 && row[0].trim() !== '')
+                    .map(row => ({
+                        q: row[0].trim(),
+                        a: row[1].trim()
+                    }));
+
+                if (newFlashcards.length > 0) {
+                    initAppWithData(newFlashcards);
+                } else {
+                    alert("No valid rows found. Ensure your CSV has at least two columns.");
+                }
+            },
+            error: function() {
+                alert("Error parsing the CSV file.");
+            }
+        });
+    }
+
+    function resetApp() {
+        document.getElementById('upload-view').classList.remove('hidden');
+        document.getElementById('app-view').classList.add('hidden');
+        document.getElementById('header-actions').classList.add('hidden');
+        document.getElementById('csv-file').value = "";
+    }
+
+    // --- Tab Switching ---
+    function switchTab(tab) {
+        document.getElementById('tab-flashcards').classList.toggle('active', tab === 'flashcards');
+        document.getElementById('tab-quiz').classList.toggle('active', tab === 'quiz');
+        
+        document.getElementById('flashcards-section').classList.toggle('hidden', tab !== 'flashcards');
+        document.getElementById('quiz-section').classList.toggle('hidden', tab !== 'quiz');
+    }
+
+    // --- Study Mode Logic (Linear Deck) ---
+    function restartStudy() {
+        currentIndex = 0;
+        updateView();
+    }
+
+    function updateView() {
+        isFlipped = false;
+        document.getElementById('flashcard').classList.remove('flipped');
+
+        if (flashcards.length === 0) return;
+
+        const currentCardObj = flashcards[currentIndex];
+        
+        document.getElementById('card-front-content').textContent = currentCardObj.q;
+        document.getElementById('card-back-content').textContent = currentCardObj.a;
+        
+        // Progress calculations
+        const total = flashcards.length;
+        const currentNumber = currentIndex + 1;
+        const remaining = total - currentNumber;
+        const progressPct = (currentNumber / total) * 100;
+        
+        document.getElementById('study-progress').style.width = `${progressPct}%`;
+        document.getElementById('card-counter-text').textContent = `Card ${currentNumber} of ${total}`;
+        document.getElementById('cards-remaining-text').textContent = `Remaining: ${remaining}`;
+
+        // Update button states
+        document.getElementById('btn-prev').disabled = (currentIndex === 0);
+        document.getElementById('btn-next').disabled = (currentIndex === total - 1);
+
+        // Render math and adjust heights
+        setTimeout(renderMathSafe, 10);
+    }
+
+    function flipCard() {
+        if (flashcards.length === 0) return;
+        isFlipped = !isFlipped;
+        document.getElementById('flashcard').classList.toggle('flipped', isFlipped);
+    }
+
+    function nextCard() {
+        if (currentIndex < flashcards.length - 1) {
+            currentIndex++;
+            updateView();
+        }
+    }
+
+    function prevCard() {
+        if (currentIndex > 0) {
+            currentIndex--;
+            updateView();
+        }
+    }
+
+    // --- Quiz Logic ---
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function loadNewQuiz() {
+        document.getElementById('next-quiz-btn').classList.add('hidden');
+        
+        const qIndex = Math.floor(Math.random() * flashcards.length);
+        const currentQ = flashcards[qIndex];
+        currentCorrectAnswer = currentQ.a;
+
+        document.getElementById('quiz-question').textContent = currentQ.q;
+
+        let options = [currentQ.a];
+        let attempts = 0;
+        while (options.length < Math.min(4, flashcards.length) && attempts < 100) {
+            let randA = flashcards[Math.floor(Math.random() * flashcards.length)].a;
+            if (!options.includes(randA)) {
+                options.push(randA);
+            }
+            attempts++;
+        }
+
+        options = shuffleArray(options);
+
+        const optionsGrid = document.getElementById('quiz-options');
+        optionsGrid.innerHTML = '';
+        
+        options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = opt; 
+            
+            const correctIcon = document.createElement('i');
+            correctIcon.className = 'fas fa-check-circle icon-correct';
+            
+            const wrongIcon = document.createElement('i');
+            wrongIcon.className = 'fas fa-times-circle icon-wrong';
+
+            btn.appendChild(textSpan);
+            btn.appendChild(correctIcon);
+            btn.appendChild(wrongIcon);
+
+            btn.onclick = () => handleQuizAnswer(btn, opt);
+            optionsGrid.appendChild(btn);
+        });
+
+        setTimeout(renderMathSafe, 10);
+    }
+
+    function handleQuizAnswer(selectedBtn, selectedAnswer) {
+        const allBtns = document.querySelectorAll('.option-btn');
+        allBtns.forEach(b => b.disabled = true);
+
+        quizTotal++;
+
+        if (selectedAnswer === currentCorrectAnswer) {
+            selectedBtn.classList.add('correct');
+            quizScore++;
+        } else {
+            selectedBtn.classList.add('wrong');
+            allBtns.forEach(b => {
+                if (b.querySelector('span').textContent === currentCorrectAnswer) {
+                    b.classList.add('correct');
+                }
+            });
+        }
+
+        document.getElementById('score-display').textContent = `Score: ${quizScore} / ${quizTotal}`;
+        document.getElementById('next-quiz-btn').classList.remove('hidden');
+    }
+
+    // --- Key bindings ---
+    document.addEventListener('keydown', (e) => {
+        if (!document.getElementById('flashcards-section').classList.contains('hidden') && flashcards.length > 0) {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                flipCard();
+            } else if (e.key === 'ArrowRight' || e.key === '>') {
+                e.preventDefault();
+                nextCard();
+            } else if (e.key === 'ArrowLeft' || e.key === '<') {
+                e.preventDefault();
+                prevCard();
+            }
+        }
+    });
+
+    // Auto-load embedded deck on startup
+    document.addEventListener('DOMContentLoaded', () => {
+        loadDefaultDeck();
+    });
+
+    // Adjust sizes dynamically on browser window resize
+    window.addEventListener('resize', () => {
+        if(!document.getElementById('flashcards-section').classList.contains('hidden') && flashcards.length > 0) {
+            adjustCardHeight();
+        }
+    });
+
+</script>
+</body>
+</html>
